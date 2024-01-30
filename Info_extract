@@ -1,0 +1,47 @@
+// Step 1: Define the Region of Interest (ROI)
+// This defines the geographic area for the analysis, using coordinates to create a rectangle.
+var roi = ee.Geometry.Rectangle([32.25, 15.25, 33, 16]);
+// Step 2: Select Image Collection
+// This selects the Landsat 9 image collection and filters it to include only images that intersect with the ROI.
+var collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+  .filterBounds(roi);
+// Step 3: Filter by Date and Cloud Cover, and Select the Image with Least Cloud Cover
+// This filters the image collection to a specific date range and sorts by cloud cover, selecting the image with the least cloud cover.
+collection = collection.filterDate('2022-01-01', '2023-12-31');
+collection = collection.sort('CLOUD_COVER');
+var leastCloudyImage = collection.first();
+// Apply scaling factors function
+// This function scales optical and thermal bands to enhance image visualization.
+function applyScaleFactors(image) {
+  var opticalBands = image.select('SR_B.').multiply(0.0000275).add(-0.2);
+  var thermalBands = image.select('ST_B.*').multiply(0.00341802).add(149.0);
+  return image.addBands(opticalBands, null, true)
+              .addBands(thermalBands, null, true);}
+var scaledImage = applyScaleFactors(leastCloudyImage);
+// Step 4: Clip, Create True Color Composite, and Add to Map
+// This clips the image to the ROI and creates a True Color Composite for visualization.
+var clippedImage = scaledImage.clip(roi);
+var visualization = {bands: ['SR_B4', 'SR_B3', 'SR_B2'], min: 0.0, max: 0.3};
+var trueColorComposite = clippedImage.visualize(visualization);
+Map.addLayer(trueColorComposite, {}, 'TrueColor Composite');
+// Step 5: Create and Add False Color Composite to Map
+// This creates a False Color Composite using specific bands to highlight different features like vegetation and water.
+var falseColorComposite = clippedImage.visualize({bands: ['SR_B5', 'SR_B4', 'SR_B3'], min: 0.0, max: 0.3});
+Map.addLayer(falseColorComposite, {}, 'FalseColor Composite');
+// Step 6: Urban Area Identification
+// This identifies urban areas using a spectral index and masks non-urban areas for visualization.
+var urbanAreas = clippedImage.normalizedDifference(['SR_B4', 'SR_B3']).gt(0.2);
+var urbanMask = urbanAreas.updateMask(urbanAreas);
+Map.addLayer(urbanMask, {palette: ['red']}, 'Urban Areas');
+// Step 7: Vegetation Delineation
+// This delineates vegetation using the NDVI index and masks non-vegetation areas for visualization.
+var ndvi = clippedImage.normalizedDifference(['SR_B5', 'SR_B4']).gt(0.3);
+var vegetationMask = ndvi.updateMask(ndvi);
+Map.addLayer(vegetationMask, {palette: ['green']}, 'Vegetation Areas');
+// Step 8: Water Body Delineation
+// This delineates water bodies using the NDWI index and masks non-water areas for visualization.
+var ndwi = clippedImage.normalizedDifference(['SR_B3', 'SR_B5']).gt(0.3);
+var waterMask = ndwi.updateMask(ndwi);
+Map.addLayer(waterMask, {palette: ['blue']}, 'Water Bodies');
+// Center the map on the ROI
+Map.centerObject(roi);
