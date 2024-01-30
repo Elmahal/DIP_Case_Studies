@@ -1,0 +1,127 @@
+// Importing the region of interest (roi) - Wadisoba Watershed
+var roi = ee.FeatureCollection('projects/ee-anwareltayeb2/assets/KRT_SA'); // //”KRT_SA”, is the region of our interest but could be replace by your own roi
+
+// Import the five classes for classification
+exports.water = water;
+exports.agric = agric;
+exports.ind = ind;
+exports.urban = urban;
+exports.barren = barren;
+
+// Load Sentinel-2 ImageCollection for the specified date range and region
+var image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterDate('2023-01-01', '2023-04-15')
+                  .filterBounds(KRT_SA)
+                  .select(['B4', 'B3', 'B2', 'B8']) // Selecting specific bands
+                  .median();
+
+// Visualisation parameters
+var visParamsFalse = { 
+  bands: ['B4', 'B3', 'B2'], 
+  min: 0.0, 
+  max: 3000,
+  gamma: 1.4
+};
+
+// Add image layer to the map for visualization
+Map.addLayer(image.clip(KRT_SA), visParamsFalse, 'KRTM23');
+Map.centerObject(KRT_SA, 10);
+
+// Supervised classification with CART
+// Define labels and bands
+var label = 'Class';
+var bands = ['B2', 'B3', 'B4', 'B8'];
+
+// Assign class labels to each feature in the collections
+var waterWithClass = water.map(function(feature) {
+  return feature.set('Class', 0);
+});
+var agricWithClass = agric.map(function(feature) {
+  return feature.set('Class', 1);
+});
+var indWithClass = ind.map(function(feature) {
+  return feature.set('Class', 2);
+});
+var urbanWithClass = urban.map(function(feature) {
+  return feature.set('Class', 3);
+});
+var barrenWithClass = barren.map(function(feature) {
+  return feature.set('Class', 4);
+});
+
+// Merge the class collections into one dataset for training
+var training = waterWithClass.merge(agricWithClass)
+  .merge(indWithClass)
+  .merge(urbanWithClass)
+  .merge(barrenWithClass);
+
+print(training); // Check the training dataset
+
+// Prepare the input image for classification
+var input = image.select(bands);
+
+// Sample the regions for training the classifier
+var trainImage = input.sampleRegions({
+  collection: training,
+  properties: [label],
+  scale: 10
+});
+print(trainImage);
+
+// Split the data into training and testing sets
+var trainingData = trainImage.randomColumn();
+var trainSet = trainingData.filter(ee.Filter.lessThan('random', 0.8));
+var testSet = trainingData.filter(ee.Filter.greaterThanOrEquals('random', 0.8));
+
+// Train the classifier
+var classifier = ee.Classifier.smileCart().train(trainSet, label, bands);
+
+// Classify the image
+var classified = input.classify(classifier);
+print(classifier.getInfo());
+
+// Define a palette for the land cover classes
+var landcoverPalette = [
+  "#0000FF", // water
+  "#00FF00", // agriculture
+  "#800080", // industrial
+  "#FFFF00", // urban
+  "#D2B48C"  // barren
+];
+
+// Add classified layer to the map
+Map.addLayer(classified.clip(KRT_SA), {palette: landcoverPalette, min: 0, max: 5}, "classified");
+
+// Accuracy assessment and confusion matrix
+var confusionMatrix = ee.ConfusionMatrix(testSet.classify(classifier)
+  .errorMatrix({
+    actual: 'Class',
+    predicted: 'classification'
+}));
+print("ConfusionMatrix:", confusionMatrix);
+print("Overall Accuracy:", confusionMatrix.accuracy());
+
+// Calculating areas of the created classes in GEE
+var areaImage = ee.Image.pixelArea().addBands(classified);
+var areas = areaImage.reduceRegion({
+  reducer: ee.Reducer.sum().group({
+    groupField: 1,
+    groupName: 'class',
+  }),
+  geometry: roi.geometry(),
+  scale: 500,
+  maxPixels: 1e10
+}); 
+print(areas);
+
+// Processing the area calculations
+var classAreas = ee.List(areas.get('groups'));
+var classAreaLists = classAreas.map(function(item) {
+  var areaDict = ee.Dictionary(item);
+  var classNumber = ee.Number(areaDict.get('class')).format();
+  var area = ee.Number(areaDict.get('sum')).divide(1e6).round();
+  return ee.List([classNumber, area]);
+});
+var result = ee.Dictionary(classAreaLists.flatten());
+print(result);
+
