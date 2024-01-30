@@ -1,0 +1,31 @@
+
+// Step 1: Import the FFT library
+// This line imports the FFT (Fast Fourier Transform) library 'fft.js'. 
+// The FFT algorithm is used for computing the Discrete Fourier Transform (DFT) and its inverse.
+const FFT = require('fft.js');
+// Step 2: Define an example function to transform
+// This function 'exampleFunction' is a sample function for which we want to perform the Fourier //Transform.
+// Here, it's defined as a sine function. Replace this with any function you want to analyze.
+function exampleFunction(t) {
+    return Math.sin(t);}
+// Step 3: Set the number of samples
+// 'n' represents the number of samples. For FFT, it's best to use a power of 2 for efficiency.
+// Here, 1024 samples are used.
+const n = 1024;ural logarithm, i 
+// Step 4: Create an FFT instance
+// This line creates a new FFT instance 'f' with 'n' points.
+const f = new FFT(n);
+// Step 5: Sample the function and prepare the input array
+// This step involves creating an array of 'n' samples by evaluating the 'exampleFunction'
+// at equally spaced intervals over 2π. This array 'input' represents the signal in the time domain.const input = new Array(n).fill(0).map((_, idx) => exampleFunction(2 * Math.PI * idx / n));
+// Step 6: Perform the FFT
+// Here, the FFT is performed on the input data.
+// 'output' is an array that will store the FFT result. It's initialized using 'createComplexArray'.
+// 'realTransform' performs the actual FFT computation on the 'input' and stores the result in 'output'.
+// 'completeSpectrum' computes the full frequency spectrum.
+const output = f.createComplexArray();
+f.realTransform(output, input);
+f.completeSpectrum(output);
+// The 'output' array now contains the result of the Fourier Transform.
+// It represents the frequency domain representation of the original time-domain signal.
+
